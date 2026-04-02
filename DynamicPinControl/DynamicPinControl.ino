@@ -20,15 +20,20 @@ static void test_uart_gpio() {
   Serial.println("\n[1] UART2 -> GPIO on D18");
   Serial.println("  Expectation: D18 active during Serial1, then manual GPIO toggle");
 
-  Serial1.begin(115200);
-  Serial1.println("UART2 active");
+  Serial2.begin(115200);
+  Serial2.println("UART2 active before GPIO");
   delay(40);
-  Serial1.end();
+  Serial2.end();
 
   pinMode(UART2_TX_PIN, OUTPUT);
   digitalWrite(UART2_TX_PIN, HIGH);
   delay(80);
   digitalWrite(UART2_TX_PIN, LOW);
+
+  Serial2.begin(115200);
+  Serial2.println("UART2 active after GPIO");
+  delay(40);
+  Serial2.end();
 }
 
 static void test_spi_pwm_gpio() {
@@ -57,6 +62,15 @@ static void test_spi_pwm_gpio() {
   digitalWrite(SPI_PWM_PIN, HIGH);
   delay(100);
   digitalWrite(SPI_PWM_PIN, LOW);
+  delay(100);
+
+  SPI1.begin();
+  SPI1.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+  for (uint16_t i = 0; i < 10; i++) {
+    (void)SPI1.transfer((uint8_t)i);
+  }
+  SPI1.endTransaction();
+  SPI1.end();
 }
 
 static void test_adc_gpio_adc_manual() {
