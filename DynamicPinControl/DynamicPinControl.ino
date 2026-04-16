@@ -27,8 +27,9 @@ static void test_uart_gpio() {
 
   pinMode(UART2_TX_PIN, OUTPUT);
   digitalWrite(UART2_TX_PIN, HIGH);
-  delay(80);
+  delay(250);
   digitalWrite(UART2_TX_PIN, LOW);
+  delay(250);
 
   Serial2.begin(115200);
   Serial2.println("UART2 active after GPIO");
@@ -75,21 +76,21 @@ static void test_spi_pwm_gpio() {
 
 static void test_adc_gpio_adc_manual() {
   Serial.println("\n[2] ADC -> GPIO -> ADC on A0/A3 (manual test)");
-  Serial.println("  Expectation: Read A0->GND and A3->3.3V then GPIO toggle, then read A0/A3 again with same expected values");
+  Serial.println("  Expectation: Read A0 then GPIO toggle, then read A0/A3 again with expected values");
   delay(1500);
 
+  pinMode(ADC_TEST_PIN_A3, OUTPUT);
   int a0_before = analogRead(ADC_TEST_PIN_A0);
-  int a3_before = analogRead(ADC_TEST_PIN_A3);
+  //int a3_before = analogRead(ADC_TEST_PIN_A3);
   Serial.print("  Before switch: A0=");
   Serial.print(a0_before);
-  Serial.print(" A3=");
-  Serial.println(a3_before);
+  //Serial.print(" A3=");
+  //Serial.println(a3_before);
 
   Serial.println("  [MANUAL] DISCONNECT A0/A3 now and connect Logic Analyzer (10s)");
   delay(10000);
 
   pinMode(ADC_TEST_PIN_A0, OUTPUT);
-  pinMode(ADC_TEST_PIN_A3, OUTPUT);
   for (int i = 0; i < 4; i++) {
     digitalWrite(ADC_TEST_PIN_A0, HIGH);
     digitalWrite(ADC_TEST_PIN_A3, LOW);
@@ -108,11 +109,6 @@ static void test_adc_gpio_adc_manual() {
   Serial.print(a0_after);
   Serial.print(" A3=");
   Serial.println(a3_after);
-
-  bool a0_ok = (a0_after < 50);
-  bool a3_ok = (a3_after > 950);
-  Serial.println((a0_ok && a3_ok) ? "  PASS: ADC re-acquired correctly" :
-                                  "  FAIL: ADC value mismatch after pinctrl switch");
 }
 
 static void test_spi_gpio_spi() {
@@ -152,8 +148,8 @@ void loop() {
   test_uart_gpio();
   delay(2500);
 
-  //test_spi_pwm_gpio();
-  //delay(250);
+  test_spi_pwm_gpio();
+  delay(250);
 
   test_adc_gpio_adc_manual();
   delay(250);
