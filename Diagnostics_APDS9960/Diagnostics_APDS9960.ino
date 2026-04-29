@@ -10,35 +10,42 @@
 
 #define APDS9960_ADDR 0x39
 #define APDS9960_ID_REG 0x92
-#define PIN_POWER_ENABLE 22  // VDD_ENV_ENABLE (P0.22 = D33)
+#define PIN_APDS_INT_D26 26
 
 void setup() {
   Serial.begin(115200);
   delay(2000);
   
   Serial.println("\n\n=== APDS9960 Diagnostic ===\n");
-  
-  // 1. Check power enable pin
-  Serial.println("1. Checking power enable pin...");
-  pinMode(PIN_POWER_ENABLE, INPUT);
-  int power_state = digitalRead(PIN_POWER_ENABLE);
-  Serial.print("   PIN_POWER_ENABLE (D33/P0.22) state: ");
-  Serial.println(power_state ? "HIGH" : "LOW");
-  delay(100);
-  
-  // 2. Initialize Wire1
-  Serial.println("\n2. Initializing Wire1...");
+   
+  // 1. Initialize Wire1.
+  Serial.println("\n1. Initializing Wire1...");
   Wire1.begin();
+  Wire1.setClock(400000);  // Set to 400kHz
   delay(500);
-  Serial.println("   Wire1.begin() done");
+  Serial.println("   ✓ Wire1.begin() + setClock(400000) done");
+
+  // 2. Compare behavior when D26 is driven HIGH.
+  Serial.println("\n2. Probing APDS with D26 driven HIGH...");
+  pinMode(PIN_APDS_INT_D26, OUTPUT);
+  digitalWrite(PIN_APDS_INT_D26, HIGH);
+  delay(20);
+  printProbeResult();
+
+  // 3. Release D26 again before the regular scan.
+  Serial.println("\n3. Releasing D26 again...");
+  pinMode(PIN_APDS_INT_D26, INPUT_PULLUP);
+  delay(20);
+  printProbeResult();
   
-  // 3. I2C Bus Scan
-  Serial.println("\n3. I2C Bus Scan on Wire1:");
+  // 4. I2C Bus Scan
+  Serial.println("\n4. I2C Bus Scan on Wire1:");
   byte error, address;
   int nDevices = 0;
   
   for(address = 1; address < 127; address++ ) {
     Wire1.beginTransmission(address);
+    Wire1.write((uint8_t)0x00);
     error = Wire1.endTransmission();
     
     if (error == 0) {
@@ -56,8 +63,8 @@ void setup() {
     Serial.println(nDevices);
   }
   
-  // 4. Direct read of APDS9960 ID
-  Serial.println("\n4. Attempting to read APDS9960 ID register (0x92)...");
+  // 5. Direct read of APDS9960 ID
+  Serial.println("\n5. Attempting to read APDS9960 ID register (0x92)...");
   uint8_t id = readAPDSregister(APDS9960_ID_REG);
   Serial.print("   ID register value: 0x");
   Serial.println(id, HEX);
@@ -68,8 +75,8 @@ void setup() {
     Serial.println(" ✗ FAIL");
   }
   
-  // 5. Read other key registers
-  Serial.println("\n5. Reading other registers...");
+  // 6. Read other key registers
+  Serial.println("\n6. Reading other registers...");
   uint8_t enable = readAPDSregister(0x80);  // ENABLE
   uint8_t status = readAPDSregister(0x93);  // STATUS
   uint8_t config1 = readAPDSregister(0x8D); // CONFIG1
@@ -80,8 +87,8 @@ void setup() {
   Serial.print("   CONFIG1 (0x8D): 0x");  Serial.println(config1, HEX);
   Serial.print("   CONFIG2 (0x90): 0x");  Serial.println(config2, HEX);
   
-  // 6. Try APDS.begin() with detailed logging
-  Serial.println("\n6. Attempting APDS.begin()...");
+  // 7. Try APDS.begin() with detailed logging
+  Serial.println("\n7. Attempting APDS.begin()...");
   if (!APDS.begin()) {
     Serial.println("   ✗ APDS.begin() FAILED");
     
@@ -94,8 +101,8 @@ void setup() {
     Serial.println("   ✓ APDS.begin() SUCCESS");
   }
   
-  // 7. Check if it's a timing issue - add more delay and retry
-  Serial.println("\n7. Testing with additional delays...");
+  // 8. Check if it's a timing issue - add more delay and retry
+  Serial.println("\n8. Testing with additional delays...");
   delay(1000);
   Serial.println("   After 1 second delay, retrying APDS.begin()...");
   if (!APDS.begin()) {
@@ -110,6 +117,21 @@ void setup() {
 void loop() {
   // Nothing here - diagnostics only run in setup
   delay(1000);
+}
+
+void printProbeResult() {
+  uint8_t error = 0;
+
+  Wire1.beginTransmission(APDS9960_ADDR);
+  error = Wire1.endTransmission();
+
+  Serial.print("   Address 0x39 probe result: ");
+  if (error == 0) {
+    Serial.println("ACK");
+  } else {
+    Serial.print("NACK/error ");
+    Serial.println(error);
+  }
 }
 
 // Helper function to read APDS register
