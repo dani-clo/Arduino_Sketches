@@ -1,31 +1,67 @@
 /*
-  WiFi TCP Diagnostic Server
+  Ethernet TCP Diagnostic Server
 
-  Standalone TCP diagnostic server to validate connectivity over WiFi,
-  using Zephyr's APIs.
+  Standalone TCP diagnostic server to validate connectivity over Ethernet,
+  using Zephyr's socket APIs.
 */
 
 #include <SPI.h>
 #if !defined(ARDUINO_ARCH_ZEPHYR)
 #error "This example is only for ARDUINO_ARCH_ZEPHYR"
 #endif
-#include <WiFi.h>
-#include <ZephyrServer.h>
-#include <ZephyrClient.h>
 
-#include "arduino_secrets.h"
+#include "ZephyrServer.h"
+#include "ZephyrClient.h"
+#include "ZephyrEthernet.h"
 
-char ssid[] = SECRET_SSID;
-char pass[] = SECRET_PASS;
-
-int status = WL_IDLE_STATUS;
+int status = 0;
 const uint16_t tcpPort = 1502;
+
+// Static fallback if DHCP is unavailable.
+IPAddress localIp(192, 168, 1, 200);
+IPAddress dnsIp(192, 168, 1, 1);
 
 ZephyrServer tcpServer(tcpPort);
 
+void printEthernetStatus() {
+  Serial.print("Link: ");
+  Serial.println(Ethernet.linkStatus() == LinkON ? "ON" : "OFF");
+
+  Serial.print("IP Address: ");
+  Serial.println(Ethernet.localIP());
+
+  Serial.print("Gateway: ");
+  Serial.println(Ethernet.gatewayIP());
+
+  Serial.print("Subnet: ");
+  Serial.println(Ethernet.subnetMask());
+}
+
+bool initEthernet() {
+  if (Ethernet.hardwareStatus() == EthernetNoHardware) {
+    Serial.println("[ERR] Ethernet hardware not found");
+    return false;
+  }
+
+  while (Ethernet.linkStatus() != LinkON) {
+    Serial.println("Waiting for Ethernet link...");
+    delay(250);
+  }
+
+  Serial.println("Starting Ethernet with DHCP...");
+  status = Ethernet.begin();
+  if (status == 0) {
+    Serial.println("DHCP failed, using static fallback IP");
+    Ethernet.begin(localIp, dnsIp);
+  }
+
+  delay(1000);
+  return true;
+}
+
 bool localTcpSelfProbe(uint16_t port) {
-  WiFiClient probe;
-  IPAddress self = WiFi.localIP();
+  ZephyrClient probe;
+  IPAddress self = Ethernet.localIP();
 
   Serial.print("[SELF] probing ");
   Serial.print(self);
@@ -43,7 +79,7 @@ bool localTcpSelfProbe(uint16_t port) {
 }
 
 bool localTcpLoopbackProbe(uint16_t port) {
-  WiFiClient probe;
+  ZephyrClient probe;
   IPAddress loopback(127, 0, 0, 1);
 
   Serial.print("[LOOPBACK] probing ");
@@ -61,40 +97,21 @@ bool localTcpLoopbackProbe(uint16_t port) {
   return true;
 }
 
-void printWifiStatus() {
-  Serial.print("SSID: ");
-  Serial.println(WiFi.SSID());
-
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
-
-  Serial.print("Gateway: ");
-  Serial.println(WiFi.gatewayIP());
-
-  Serial.print("Subnet: ");
-  Serial.println(WiFi.subnetMask());
-
-  Serial.print("RSSI: ");
-  Serial.print(WiFi.RSSI());
-  Serial.println(" dBm");
-}
-
 void setup() {
   Serial.begin(115200);
   while (!Serial) {
     ;
   }
 
-  Serial.println("WiFi TCP Diagnostic Server");
+  Serial.println("Ethernet TCP Diagnostic Server");
 
-  while (status != WL_CONNECTED) {
-    Serial.print("Connecting to SSID: ");
-    Serial.println(ssid);
-    status = WiFi.begin(ssid, pass);
-    delay(5000);
+  if (!initEthernet()) {
+    while (1) {
+      delay(1000);
+    }
   }
 
-  printWifiStatus();
+  printEthernetStatus();
 
   Serial.print("Starting TCP server on port ");
   Serial.println(tcpPort);
@@ -111,7 +128,7 @@ void setup() {
   bool selfOk = localTcpSelfProbe(tcpPort);
   bool loopOk = localTcpLoopbackProbe(tcpPort);
 
-  Serial.print("Self probes: wifi-ip=");
+  Serial.print("Self probes: local-ip=");
   Serial.print(selfOk ? "OK" : "FAIL");
   Serial.print(", loopback=");
   Serial.println(loopOk ? "OK" : "FAIL");
@@ -120,7 +137,7 @@ void setup() {
 }
 
 void loop() {
-  WiFiClient client = tcpServer.available();
+  ZephyrClient client = tcpServer.accept();
 
   if (!client) {
     delay(10);

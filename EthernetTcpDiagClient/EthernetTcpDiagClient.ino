@@ -1,7 +1,7 @@
 /*
-  WiFi TCP Diagnostic Client
+  Ethernet TCP Diagnostic Client
 
-  Standalone TCP diagnostic client to validate connectivity over WiFi,
+  Standalone TCP diagnostic client to validate connectivity over Ethernet,
   using Zephyr's socket APIs.
 */
 
@@ -9,37 +9,56 @@
 #if !defined(ARDUINO_ARCH_ZEPHYR)
 #error "This example is only for ARDUINO_ARCH_ZEPHYR"
 #endif
-#include <WiFi.h>
 
-#include "arduino_secrets.h"
+#include <ZephyrClient.h>
+#include "ZephyrEthernet.h"
 
-char ssid[] = SECRET_SSID;
-char pass[] = SECRET_PASS;
-
-int status = WL_IDLE_STATUS;
+int status = 0;
 const uint16_t tcpPort = 1502;
-IPAddress serverIp(10, 130, 22, 157);
+IPAddress serverIp(192, 168, 1, 13);
 
-void printWifiStatus() {
-  Serial.print("SSID: ");
-  Serial.println(WiFi.SSID());
+// Static fallback if DHCP is unavailable.
+IPAddress localIp(192, 168, 1, 201);
+IPAddress dnsIp(192, 168, 1, 1);
+
+void printEthernetStatus() {
+  Serial.print("Link: ");
+  Serial.println(Ethernet.linkStatus() == LinkON ? "ON" : "OFF");
 
   Serial.print("Client IP: ");
-  Serial.println(WiFi.localIP());
+  Serial.println(Ethernet.localIP());
 
   Serial.print("Gateway: ");
-  Serial.println(WiFi.gatewayIP());
+  Serial.println(Ethernet.gatewayIP());
 
   Serial.print("Subnet: ");
-  Serial.println(WiFi.subnetMask());
+  Serial.println(Ethernet.subnetMask());
+}
 
-  Serial.print("RSSI: ");
-  Serial.print(WiFi.RSSI());
-  Serial.println(" dBm");
+bool initEthernet() {
+  if (Ethernet.hardwareStatus() == EthernetNoHardware) {
+    Serial.println("[ERR] Ethernet hardware not found");
+    return false;
+  }
+
+  while (Ethernet.linkStatus() != LinkON) {
+    Serial.println("Waiting for Ethernet link...");
+    delay(250);
+  }
+
+  Serial.println("Starting Ethernet with DHCP...");
+  status = Ethernet.begin();
+  if (status == 0) {
+    Serial.println("DHCP failed, using static fallback IP");
+    Ethernet.begin(localIp, dnsIp);
+  }
+
+  delay(1000);
+  return true;
 }
 
 bool tcpConnectProbe(IPAddress ip, uint16_t port) {
-  WiFiClient probe;
+  ZephyrClient probe;
 
   Serial.print("[PROBE] connect to ");
   Serial.print(ip);
@@ -57,7 +76,7 @@ bool tcpConnectProbe(IPAddress ip, uint16_t port) {
 }
 
 bool tcpEchoProbe(IPAddress ip, uint16_t port) {
-  WiFiClient client;
+  ZephyrClient client;
   const char *msg = "PING_FROM_CLIENT\n";
   char rx[32];
   int idx = 0;
@@ -109,21 +128,20 @@ void setup() {
     ;
   }
 
-  Serial.println("WiFi TCP Diagnostic Client");
+  Serial.println("Ethernet TCP Diagnostic Client");
 
-  while (status != WL_CONNECTED) {
-    Serial.print("Connecting to SSID: ");
-    Serial.println(ssid);
-    status = WiFi.begin(ssid, pass);
-    delay(5000);
+  if (!initEthernet()) {
+    while (1) {
+      delay(1000);
+    }
   }
 
-  printWifiStatus();
+  printEthernetStatus();
 }
 
 void loop() {
   Serial.println("------------------------------");
-  printWifiStatus();
+  printEthernetStatus();
 
   bool connectOk = tcpConnectProbe(serverIp, tcpPort);
   bool echoOk = false;
