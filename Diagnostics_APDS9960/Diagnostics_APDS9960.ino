@@ -1,7 +1,7 @@
 /*
   APDS-9960 Diagnostic Sketch
   
-  This sketch diagnoses why APDS-9960 initialization fails.
+  This sketch diagnoses communication with the APDS-9960 sensor when initialization fails.
   It performs I2C scans and reads the sensor directly.
 */
 
@@ -23,7 +23,7 @@ void setup() {
   Wire1.begin();
   Wire1.setClock(400000);  // Set to 400kHz
   delay(500);
-  Serial.println("   ✓ Wire1.begin() + setClock(400000) done");
+  Serial.println("Wire1.begin() + setClock(400000) done");
 
   // 2. Compare behavior when D26 is driven HIGH.
   Serial.println("\n2. Probing APDS with D26 driven HIGH...");
@@ -49,7 +49,7 @@ void setup() {
     error = Wire1.endTransmission();
     
     if (error == 0) {
-      Serial.print("   Found I2C device at address 0x");
+      Serial.print("Found I2C device at address 0x");
       if (address < 16) Serial.print("0");
       Serial.println(address, HEX);
       nDevices++;
@@ -57,9 +57,9 @@ void setup() {
   }
   
   if (nDevices == 0) {
-    Serial.println("   No I2C devices found!");
+    Serial.println("No I2C devices found!");
   } else {
-    Serial.print("   Total devices found: ");
+    Serial.print("Total devices found: ");
     Serial.println(nDevices);
   }
   
@@ -90,7 +90,7 @@ void setup() {
   // 7. Try APDS.begin() with detailed logging
   Serial.println("\n7. Attempting APDS.begin()...");
   if (!APDS.begin()) {
-    Serial.println("   ✗ APDS.begin() FAILED");
+    Serial.println("APDS.begin() FAILED");
     
     // Try to read ID again after begin attempt
     Serial.println("\n   Retrying ID read after failed begin...");
@@ -98,7 +98,7 @@ void setup() {
     Serial.print("   ID register value: 0x");
     Serial.println(id, HEX);
   } else {
-    Serial.println("   ✓ APDS.begin() SUCCESS");
+    Serial.println("APDS.begin() SUCCESS");
   }
   
   // 8. Check if it's a timing issue - add more delay and retry
@@ -106,9 +106,9 @@ void setup() {
   delay(1000);
   Serial.println("   After 1 second delay, retrying APDS.begin()...");
   if (!APDS.begin()) {
-    Serial.println("   ✗ Still failed after delay");
+    Serial.println("Still failed after delay");
   } else {
-    Serial.println("   ✓ SUCCESS after delay!");
+    Serial.println("SUCCESS after delay!");
   }
   
   Serial.println("\n=== Diagnostic Complete ===\n");
