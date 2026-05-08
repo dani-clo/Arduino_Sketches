@@ -125,7 +125,7 @@ void printProbeResult() {
   Wire1.beginTransmission(APDS9960_ADDR);
   error = Wire1.endTransmission();
 
-  Serial.print("   Address 0x39 probe result: ");
+  Serial.print("Address 0x39 probe result: ");
   if (error == 0) {
     Serial.println("ACK");
   } else {
