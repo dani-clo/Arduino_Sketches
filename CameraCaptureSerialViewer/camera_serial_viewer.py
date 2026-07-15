@@ -19,6 +19,8 @@ import cv2
 import numpy as np
 import serial
 
+SERIAL_RETRY_DELAY_S = 1.0
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="View Nicla Vision camera frames over serial")
@@ -27,6 +29,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--width", type=int, default=320, help="Frame width (default: 320)")
     parser.add_argument("--height", type=int, default=240, help="Frame height (default: 240)")
     parser.add_argument("--timeout", type=float, default=1.5, help="Serial read timeout in seconds")
+    parser.add_argument(
+        "--open-retries",
+        type=int,
+        default=5,
+        help="Serial open/reset attempts before failing (default: 5)",
+    )
     parser.add_argument(
         "--format",
         default="rgb565_be",
@@ -46,8 +54,8 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def read_exact(ser: serial.Serial, size: int) -> bytes:
-    """Read exactly size bytes or raise TimeoutError."""
+def read_frame(ser: serial.Serial, size: int) -> tuple[bytes, bool]:
+    """Read up to size bytes and report whether the frame was complete."""
     data = bytearray()
     deadline = time.monotonic() + max(ser.timeout or 0, 0.01)
 
@@ -59,9 +67,16 @@ def read_exact(ser: serial.Serial, size: int) -> bytes:
             continue
 
         if time.monotonic() >= deadline:
-            raise TimeoutError(f"Timed out while waiting for frame ({len(data)}/{size} bytes)")
+            return bytes(data), False
 
-    return bytes(data)
+    return bytes(data), True
+
+
+def pad_frame(frame_bytes: bytes, size: int) -> bytes:
+    """Pad a partial frame with zero bytes so it can still be rendered."""
+    if len(frame_bytes) >= size:
+        return frame_bytes[:size]
+    return frame_bytes + b"\x00" * (size - len(frame_bytes))
 
 
 def rgb565_to_bgr(frame_bytes: bytes, width: int, height: int) -> np.ndarray:
@@ -123,16 +138,44 @@ def convert_frame(
     return np.dstack((b_val, g_val, r_val))
 
 
+def open_serial_with_retry(
+    port: str,
+    baud: int,
+    timeout: float,
+    retries: int,
+) -> serial.Serial:
+    """Open serial and prepare buffers with retry to tolerate USB CDC bring-up races."""
+    attempts = max(1, retries)
+    last_exc: Exception | None = None
+
+    for attempt in range(1, attempts + 1):
+        ser = None
+        try:
+            ser = serial.Serial(port, baud, timeout=timeout)
+            time.sleep(SERIAL_RETRY_DELAY_S)
+            ser.reset_input_buffer()
+            ser.reset_output_buffer()
+            return ser
+        except (serial.SerialException, OSError) as exc:
+            last_exc = exc
+            if ser is not None and ser.is_open:
+                ser.close()
+            if attempt < attempts:
+                print(
+                    f"Serial open/prepare failed ({attempt}/{attempts}): {exc}. Retrying in {SERIAL_RETRY_DELAY_S:.1f}s...",
+                    file=sys.stderr,
+                )
+                time.sleep(SERIAL_RETRY_DELAY_S)
+
+    raise serial.SerialException(f"Could not open {port} after {attempts} attempts: {last_exc}")
+
+
 def main() -> int:
     args = parse_args()
     frame_size = args.width * args.height * 2
 
     try:
-        with serial.Serial(args.port, args.baud, timeout=args.timeout) as ser:
-            # Let the USB CDC/serial line settle.
-            time.sleep(0.3)
-            ser.reset_input_buffer()
-            ser.reset_output_buffer()
+        with open_serial_with_retry(args.port, args.baud, args.timeout, args.open_retries) as ser:
 
             print(
                 f"Connected to {args.port} at {args.baud} bps | "
@@ -149,7 +192,13 @@ def main() -> int:
 
             while True:
                 ser.write(b"\x01")
-                frame_bytes = read_exact(ser, frame_size)
+                frame_bytes, complete = read_frame(ser, frame_size)
+                if not complete:
+                    print(
+                        f"Partial frame: {len(frame_bytes)}/{frame_size} bytes, padding missing data",
+                        file=sys.stderr,
+                    )
+                frame_bytes = pad_frame(frame_bytes, frame_size)
                 frame = convert_frame(frame_bytes, args.width, args.height, args.format)
 
                 if args.vflip:
@@ -167,9 +216,6 @@ def main() -> int:
     except serial.SerialException as exc:
         print(f"Serial error: {exc}", file=sys.stderr)
         return 1
-    except TimeoutError as exc:
-        print(f"Frame timeout: {exc}", file=sys.stderr)
-        return 2
     finally:
         cv2.destroyAllWindows()
 
